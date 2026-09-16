@@ -1,5 +1,5 @@
-fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
-python-multipart>=0.0.9
-stripe>=10.0.0
-google-genai>=1.0.0
+fastapi==0.110.0
+uvicorn==0.28.0
+google-generativeai==0.4.1
+stripe==8.8.0
+python-multipart==0.0.9

@@ -1,11 +1,10 @@
 import os
 import logging
 
+import google.generativeai as genai
 import stripe
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
-from google import genai
-from google.genai import types
 
 logger = logging.getLogger("led_diagnosis")
 
@@ -23,18 +22,13 @@ REQUIRED_ENV_VARS = (
 )
 
 
-gemini_client: genai.Client | None = None
-
-
 @app.on_event("startup")
 def validate_environment() -> None:
-    global gemini_client
-
     missing = [name for name in REQUIRED_ENV_VARS if not os.environ.get(name)]
     if missing:
         raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
 
-    gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
     stripe.api_key = os.environ["STRIPE_SECRET_KEY"]
 
 
@@ -50,6 +44,8 @@ async def diagnose_and_checkout(file: UploadFile = File(...)):
     if len(contents) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="ファイルサイズが大きすぎます（最大10MB）。")
 
+    image_parts = [{"mime_type": file.content_type, "data": contents}]
+
     # 2. Gemini 2.5 Flash（超高速・高精度モデル）で画像診断
     prompt = """
     この画像（照明または電気代の検針票）を分析してください。
@@ -59,13 +55,8 @@ async def diagnose_and_checkout(file: UploadFile = File(...)):
     上記を短く分かりやすく店舗オーナー向けに出力してください。
     """
     try:
-        response = gemini_client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[
-                prompt,
-                types.Part.from_bytes(data=contents, mime_type=file.content_type),
-            ],
-        )
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        response = model.generate_content([prompt, image_parts[0]])
         diagnosis_text = response.text
     except Exception:
         logger.exception("Gemini diagnosis failed")
